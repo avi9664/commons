@@ -1,15 +1,16 @@
 const { App } = require("@slack/bolt");
 const token = process.env['BOT_TOKEN']
+const fetch = require("isomorphic-unfetch")
 const ss = process.env['SIGNING_SECRET']
 const channel = "C021CQCHP09" //C021CQCHP09 for test, ??? for actual
 const app = new App({
 	token: token,
 	signingSecret: ss
 });
-let fish = 0;
+let fish = 0.5;
 let game = false;
 let players = {};
-let fishValue = 2;
+let fishValue = 1;
 
 async function speak(text) {
 	try {
@@ -22,6 +23,15 @@ async function speak(text) {
 		console.error(e);
 	}
 }
+
+/** async function transact() {
+ * fetch('https://hn.rishi.cx', {
+ * method: 'POST',
+ * headers: {
+ * 	
+ * }
+ * })
+} **/
 
 async function eph(text, user) {
 	try {
@@ -64,7 +74,7 @@ async function endGame(quit) {
 			await speak(`This game, you've also done well with fishing responsibly! I'll give each of you ${bonus}HN as a bonus!`)
 		}
 		for (let [key, value] of Object.entries(players)) {
-			await eph(`Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!`, key)
+			await eph(`:moneybag:~Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!~ haven't implemented le mons yet lol`, key)
 		}
 	}
 	fish = 0;
@@ -78,9 +88,9 @@ async function runGame() {
 		time += 100;
 		if (time % 30000 == 0) {
 			fish *= 2;
-			await speak(`The fish population has doubled! Now there are *${fish}* :fish: in the lake!`)
+			await speak(`:two:The fish population has doubled! Now there are *${fish}* :fish: in the lake!`)
 		}
-		if (time % 300000 == 0 && fish > 0) {
+		if (time % 120000 == 0 && fish > 0) {
 			endGame(false);
 		}
 		var diff = (new Date().getTime() - start) - time;
@@ -95,9 +105,9 @@ app.command('/go-fishing', async ({ command, ack, say }) => {
 	// Acknowledge command request
 	await ack();
 	if (game) {
-		await say("Sorry, right now we can only play one game at a time. ")
+		await say("There's currently a game going on right now! Type */fish* to join in")
 	} else {
-		fish = 10;
+		fish = 20;
 		game = true;
 		players = {}
 		await say(`Howdy, y'all! Let's go fishing! :fishing_pole_and_fish: Right now, there are *${fish}* :fish: in Hack Lake! Type */fish* to fish`);
@@ -118,7 +128,7 @@ app.command('/fish', async ({ command, ack, say }) => {
 			number = fish < number ? fish : number;
 		}
 		if (number > fish/2 && number > 5) {
-			await eph(`Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
+			await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
 			number = Math.floor(fish/2);
 		}
 		if (!players[user]) {
@@ -126,7 +136,7 @@ app.command('/fish', async ({ command, ack, say }) => {
 		}
 		players[user] += number;
 		fish -= number;
-		await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now ${fish} fish remaining!`)
+		await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now *${fish}* fish remaining!`)
 		if (fish <= 0) {
 			game = false;
 			fish = 0;
@@ -140,8 +150,18 @@ app.command('/fish', async ({ command, ack, say }) => {
 
 app.command('/end-fishing', async ({ command, ack, say }) => {
 	await ack();
-	endGame(true);
+	if (game) {
+		endGame(true);
+	} else {
+		say("There isn't a game going on right now! Send */go-fishing* in the chat to start")
+	}
 });
+
+app.command('/fish-help', async({command, ack, say}) => {
+	await ack();
+	say(":wave::skin-tone-4:Howdy! Welcome to the Hack Lake, a place run by me, your local fisherman! ~a.k.a. the primordial but retired Aztec god of fishing, Opochtli, but if you ask about that, I will smite you.~\nYour main goals in this game are simple:\n1. Fish. :fishing_pole_and_fish: :tropical_fish:\n2. PROFIT. :money_mouth_face: :hn:\nBut there's a catch-- no, not the I-got-an-Alaskan-crab type of catch-- *Hack Lake can run out of fish!* And if you overfish, you lose all the possible profit you'd get. :chart_with_downwards_trend: You have :two: minutes to fish, and the fish population doubles every :three::zero: seconds. Can you work with others to get the most profit while responsibly maintaining the :fish: population?\nThis is a test of your character, of your greed, of your willingness to cooperate! Are you ready to prove yourself worthy? Type */go-fishing* to start a game, and type */fish* to make a catch. If you ever want to end a game early, type /end-fishing.")
+});
+
 
 (async (req, res) => {
 	// Start your app
