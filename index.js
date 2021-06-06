@@ -53,7 +53,6 @@ async function eph(text, user) {
 
 async function sendResult(query, add) {
 	try {
-
 		fetch("https://api.airtable.com/v0/appjIEGGFtyw8SHu7/overall/recMMWaz2XxBDz5AS", {
 			headers: {
 				Authorization: tk
@@ -165,18 +164,21 @@ async function endGame(quit) {
 			score = "D"
 			await sendResult('Ds', 1, false)
 		}
-		await speak(`:hourglass:TIME'S UP!:hourglass:\nThe remaining :fish: population is *${fish}*. Based on your fishing responsibility, you get a rating of *${score}*.\nLet me take all that fish-- Wow, that's a _lot_ you've got there! I'll give you ${fishValue}HN per fish for all your hard work!`)
+		await speak(`:hourglass:TIME'S UP!:hourglass:\nThe remaining :fish: population is *${fish}*. Based on your fishing responsibility, you get a rating of *${score}*.`)
+		await speak(Object.keys(players).length <= 1 ? "Let me take all that fish-- Wow, that's a _lot_ you've got there! There's only one player, so I won't give you any HN to be fair to others, but I'll still add your fish to the leaderboard!" : `Let me take all that fish-- Wow, that's a _lot_ you've got there! I'll give you ${fishValue}HN per fish for all your hard work!`)
 		let list = "";
 		for (let [key, value] of Object.entries(players)) {
 			list += `<@${key}> - ${value} :fish:\n`
 		}
 		sendScores();
 		await speak(`Here's how many fish each of y'all got: \n${list}`)
-		if (bonus > 0) {
+		if (bonus > 0 && Object.keys(players).length > 1) {
 			await speak(`This game, you've also done well with fishing responsibly! I'll give each of you ${bonus}HN as a bonus!`)
 		}
 		for (let [key, value] of Object.entries(players)) {
-			await eph(`:moneybag:~Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!~ haven't implemented le mons yet lol`, key)
+			if (Object.keys(players).length > 1) {
+				await eph(`:moneybag:~Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!~ haven't implemented le mons yet lol`, key)
+			}
 		}
 	}
 	fish = 0;
