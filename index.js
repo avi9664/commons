@@ -3,6 +3,7 @@ const token = process.env['BOT_TOKEN']
 const fetch = require("isomorphic-unfetch")
 const ss = process.env['SIGNING_SECRET']
 const tk = `Bearer ${process.env['TABLE_KEY']}`
+const hn = process.env['HN_TOKEN']
 const channel = "C021CQCHP09" //C021CQCHP09 for test, ??? for actual
 
 const Airtable = require('airtable');
@@ -29,14 +30,39 @@ async function speak(text) {
 	}
 }
 
-/** async function transact() {
- * fetch('https://hn.rishi.cx', {
- * method: 'POST',
- * headers: {
- * 	
- * }
- * })
-} **/
+async function transact(user, money) {
+	fetch('https://hn.rishi.cx', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			token: `${hn}`
+		},
+		body: JSON.stringify({
+			query: `
+				mutation SendMonee($monee: Float!, $to: String!, $bot: String!){
+					send(data: {
+						balance: $monee,
+						to: $to,
+						from: $bot
+					}) {
+					id
+					validated
+					balance
+				}
+			}
+			`,
+			variables: {
+				monee: money,
+				to: user,
+				bot: 'U021CPNLX9P'
+			},
+		}),
+	})
+	.then((res) => res.json())
+  .then((result) => console.log(result));
+}
+
+transact('UCPRVD7AQ', 1)
 
 async function eph(text, user) {
 	try {
@@ -190,7 +216,7 @@ async function runGame() {
 		time = 0;
 	async function instance() {
 		time += 100;
-		if (time % 30000 == 0) {
+		if (time % 30000 == 0 &&time % 120000 != 0) {
 			fish *= 2;
 			await speak(`:two:The fish population has doubled! Now there are *${fish}* :fish: in the lake!`)
 		}
@@ -232,6 +258,7 @@ app.command('/fish-board', async ({ command, ack, say }) => {
 			}
 		}).then((res) => res.json())
 			.then(async (result) => {
+
 				let list = ":trophy:Here's the top 10 fishers so far:\n";
 				for (let user of result.records) {
 					let stats = user.fields;
@@ -251,7 +278,7 @@ app.command('/fish', async ({ command, ack, say }) => {
 			let user = command.user_id;
 			let number = 1;
 			console.log(command.text);
-			if (isNaN(command.text) || command.text == "") {
+			if (isNaN(command.text) || command.text == "" || command.text <= 0) {
 				number = 1;
 			} else {
 				number = parseInt(command.text);
