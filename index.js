@@ -177,14 +177,14 @@ async function endGame(quit) {
 			score = "A"
 			await sendResult('As', 1, false)
 			bonus = 2
-		} else if (fish < 20 && fish >= 10) {
+		} else if (fish >= 10) {
 			score = "B"
 			await sendResult('Bs', 1, false)
 			bonus = 1
-		} else if (fish < 10 && fish >= 5) {
+		} else if (fish >= 5) {
 			score = "C"
 			await sendResult('Cs', 1, false)
-		} else if (fish < 5) {
+		} else {
 			score = "D"
 			await sendResult('Ds', 1, false)
 		}
@@ -201,8 +201,10 @@ async function endGame(quit) {
 		}
 		for (let [key, value] of Object.entries(players)) {
 			if (Object.keys(players).length > 1) {
-				await eph(`:moneybag:Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!`, key)
-				transact(key, value * fishValue + bonus)
+				let money = value * fishValue + bonus
+				money = +money.toFixed(1);
+				await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
+				transact(key, money)
 			}
 		}
 	}
