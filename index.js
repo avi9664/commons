@@ -35,13 +35,13 @@ async function transact(user, money) {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			token: `${hn}`
+			'secret': `${hn}`
 		},
 		body: JSON.stringify({
 			query: `
-				mutation SendMonee($monee: Float!, $to: String!, $bot: String!){
+				mutation SendMonee($balance: Float!, $to: String!, $bot: String!){
 					send(data: {
-						balance: $monee,
+						balance: $balance,
 						to: $to,
 						from: $bot
 					}) {
@@ -52,7 +52,7 @@ async function transact(user, money) {
 			}
 			`,
 			variables: {
-				monee: money,
+				balance: money,
 				to: user,
 				bot: 'U021CPNLX9P'
 			},
@@ -61,8 +61,6 @@ async function transact(user, money) {
 	.then((res) => res.json())
   .then((result) => console.log(result));
 }
-
-transact('UCPRVD7AQ', 1)
 
 async function eph(text, user) {
 	try {
@@ -203,7 +201,8 @@ async function endGame(quit) {
 		}
 		for (let [key, value] of Object.entries(players)) {
 			if (Object.keys(players).length > 1) {
-				await eph(`:moneybag:~Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!~ haven't implemented le mons yet lol`, key)
+				await eph(`:moneybag:Keep your eyes out for a transaction of ${value * fishValue + bonus}HN into your account!`, key)
+				transact(key, value * fishValue + bonus)
 			}
 		}
 	}
