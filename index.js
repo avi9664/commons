@@ -16,7 +16,8 @@ const app = new App({
 let fish = 0;
 let game = false;
 let players = {};
-let fishValue = 0.1;
+let fishValue = 0.01;
+let bonusValue = 0.1
 
 async function speak(text) {
 	try {
@@ -58,8 +59,8 @@ async function transact(user, money) {
 			},
 		}),
 	})
-	.then((res) => res.json())
-  .then((result) => console.log(result));
+		.then((res) => res.json())
+		.then((result) => console.log(result));
 }
 
 async function eph(text, user) {
@@ -173,20 +174,22 @@ async function endGame(quit) {
 	} else {
 		score = "";
 		bonus = 0;
-		if (fish >= 20) {
-			score = "A"
-			await sendResult('As', 1, false)
-			bonus = 2
-		} else if (fish >= 10) {
-			score = "B"
-			await sendResult('Bs', 1, false)
-			bonus = 1
-		} else if (fish >= 5) {
-			score = "C"
-			await sendResult('Cs', 1, false)
-		} else {
-			score = "D"
-			await sendResult('Ds', 1, false)
+		if (Object.keys(players).length > 1) {
+			if (fish >= 20) {
+				score = "A"
+				await sendResult('As', 1, false)
+				bonus = 2 * bonusValue
+			} else if (fish >= 10) {
+				score = "B"
+				await sendResult('Bs', 1, false)
+				bonus = 1 * bonusValue
+			} else if (fish >= 5) {
+				score = "C"
+				await sendResult('Cs', 1, false)
+			} else {
+				score = "D"
+				await sendResult('Ds', 1, false)
+			}
 		}
 		await speak(`:hourglass:TIME'S UP!:hourglass:\nThe remaining :fish: population is *${fish}*. Based on your fishing responsibility, you get a rating of *${score}*.`)
 		await speak(Object.keys(players).length <= 1 ? "Let me take all that fish-- Wow, that's a _lot_ you've got there! There's only one player, so I won't give you any HN to be fair to others, but I'll still add your fish to the leaderboard!" : `Let me take all that fish-- Wow, that's a _lot_ you've got there! I'll give you ${fishValue}HN per fish for all your hard work!`)
@@ -202,7 +205,7 @@ async function endGame(quit) {
 		for (let [key, value] of Object.entries(players)) {
 			if (Object.keys(players).length > 1) {
 				let money = value * fishValue + bonus
-				money = +money.toFixed(1);
+				money = +money.toFixed(2);
 				await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
 				transact(key, money)
 			}
@@ -217,7 +220,7 @@ async function runGame() {
 		time = 0;
 	async function instance() {
 		time += 100;
-		if (time % 30000 == 0 &&time % 120000 != 0) {
+		if (time % 30000 == 0 && time % 120000 != 0) {
 			fish *= 2;
 			await speak(`:two:The fish population has doubled! Now there are *${fish}* :fish: in the lake!`)
 		}
@@ -279,11 +282,19 @@ app.command('/fish', async ({ command, ack, say }) => {
 			let user = command.user_id;
 			let number = 1;
 			console.log(command.text);
-			if (isNaN(command.text) || command.text == "" || command.text <= 0) {
+			if (isNaN(command.text) || command.text == "" || command.text <= 0 || !isFinite(command.text)) {
+				if (isNaN(command.text) && command.text != "") {
+					await eph(`:warning:Uh oh! You inputted a non-number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}!`, user)
+				} else if (command.text <= 0 || !isFinite(command.text)) {
+					await eph(`:warning:Uh oh! You inputted an invalid number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}`, user)
+				}
 				number = 1;
 			} else {
 				number = parseInt(command.text);
 				number = fish < number ? fish : number;
+				if (fish < number) {
+					await eph(`:warning:Woah! You're hauling way more than the number of fish in the commons! Let's just haul the remaining fish.`, user)
+				}
 			}
 			if (number > fish / 2 && number > 5) {
 				await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
@@ -326,7 +337,7 @@ app.command('/end-fishing', async ({ command, ack, say }) => {
 app.command('/fish-help', async ({ command, ack, say }) => {
 	try {
 		await ack();
-		say(":wave::skin-tone-4:Howdy! Welcome to the Hack Lake, a place run by me, your local fisherman! ~a.k.a. the primordial but retired Aztec god of fishing, Opochtli, but if you ask about that, I will smite you.~\nYour main goals in this game are simple:\n1. Fish. :fishing_pole_and_fish: :tropical_fish:\n2. PROFIT. :money_mouth_face: :hn:\nBut there's a catch-- no, not the I-got-an-Alaskan-crab type of catch-- *Hack Lake can run out of fish!* And if you overfish, you lose all the possible profit you'd get. :chart_with_downwards_trend: You have :two: minutes to fish, and the fish population doubles every :three::zero: seconds. Can you work with others to get the most profit while responsibly maintaining the :fish: population?\nThis is a test of your character, of your greed, of your willingness to cooperate! Are you ready to prove yourself worthy? Type */go-fishing* to start a game, and type */fish* to make a catch. If you ever want to end a game early, type /end-fishing.")
+		say(":wave::skin-tone-4:Howdy! Welcome to the Hack Lake, a place run by me, your local fisherman! ~a.k.a. the primordial but retired Aztec god of fishing, Opochtli, but if you ask about that, I will smite you.~\nYour main goals in this game are simple:\n1. Fish. :fishing_pole_and_fish: :tropical_fish:\n2. PROFIT. :money_mouth_face: :hn:\nBut there's a catch-- no, not the I-got-an-Alaskan-crab type of catch-- *Hack Lake can run out of fish!* :chart_with_downwards_trend: And if you overfish, you lose all the possible profit you'd get. If the number of fish in the lake reaches 0, then you lose the game and get no money! :white_frowning_face: You have :two: minutes to fish, and the fish population doubles every :three::zero: seconds. Can you work with others to get the most profit while responsibly maintaining the :fish: population?\nThis is a test of your character, of your greed, of your willingness to cooperate! Are you ready to prove yourself worthy? Type */go-fishing* to start a game, and type */fish* to make a catch. If you ever want to end a game early, type /end-fishing.")
 	} catch (e) {
 		console.error(e)
 	}
