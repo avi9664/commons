@@ -19,6 +19,7 @@ let players = {};
 let fishValue = 0.01;
 let bonusValue = 0.1
 let permitPrice = 1;
+let leFishe = ['https://youtu.be/3uQzdlVsLXY', 'https://youtu.be/gLYg1Pe2_K8', 'https://youtu.be/lPGipwoJiOM', 'https://youtu.be/aN4AigQDp8M', 'https://youtu.be/PHAmpGJbiZM', 'https://youtu.be/zwaRWyS_dqU', 'https://youtu.be/Zx5ZRBIPEiw', 'https://youtu.be/zhFNHBDXa38', 'https://youtu.be/TsSW15SFADA', 'https://youtu.be/JBDGbdphHTA', 'https://youtu.be/kVgGR5wOXsU', 'https://youtu.be/qkI_-ep5JhU']
 
 async function speak(text) {
 	try {
@@ -63,6 +64,8 @@ async function demandMonee(user) {
 		.then((res) => res.json())
 		.then((result) => console.log(result));
 }
+
+
 
 async function transact(user, money) {
 	fetch('https://hn.rishi.cx', {
@@ -126,15 +129,35 @@ async function sendResult(query, add) {
 							'fields': copy.fields,
 						}
 					]
-					console.log(update);
-					base('overall').update(update, function(err, records) {
-						if (err) {
-							console.error(err);
-							return;
-						}
-					});
+					updateBase('overall', update);
 				}).catch((e) => console.error(e))
 		}
+	} catch (e) {
+		console.error(e)
+	}
+}
+
+async function updateBase(baseName, update) {
+	try {
+		base(baseName).update(update, function(err, records) {
+			if (err) {
+				console.error(err);
+				return;
+			}
+		});
+	} catch (e) {
+		console.error(e)
+	}
+}
+
+async function createEntry(baseName, entry) {
+	try {
+		base(baseName).create(entry, function(err, records) {
+			if (err) {
+				console.error(err);
+				return;
+			}
+		});
 	} catch (e) {
 		console.error(e)
 	}
@@ -170,14 +193,7 @@ async function sendScores() {
 								}
 							]
 						};
-						fetch("https://api.airtable.com/v0/appjIEGGFtyw8SHu7/users", {
-							body: JSON.stringify(update),
-							headers: {
-								Authorization: tk,
-								"Content-Type": "application/json"
-							},
-							method: "POST",
-						}).catch((e) => console.error(e))
+						createEntry('users', update)
 					} else {
 						update = [{
 							id: copy.records[index].id,
@@ -188,12 +204,7 @@ async function sendScores() {
 							}
 						}]
 						console.log(update)
-						base('users').update(update, function(err, records) {
-							if (err) {
-								console.error(err);
-								return;
-							}
-						});
+						updateBase('users', update)
 					}
 				}
 			})
@@ -236,7 +247,7 @@ async function endGame() {
 		if (Object.keys(players).length > 1) {
 			let money = value * fishValue + bonus
 			money = +money.toFixed(2);
-			await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
+			await eph(`:moneybag:~Keep your eyes out for a transaction of ${money}HN into your account!~ money powers down for now, sorry :(`, key)
 			// transact(key, money)
 		}
 	}
@@ -263,6 +274,28 @@ async function runGame() {
 	}
 	setTimeout(instance, 100);
 }
+
+app.event('app_mention', async (body) => {
+	try {
+		let e = body.event;
+		let c = e.channel;
+		let thing = leFishe[Math.floor(Math.random(0, 1) * leFishe.length)]
+		speak(thing)
+	} catch (e) {
+		console.error(e)
+	}
+})
+
+app.command('/t', async({command, ack, say}) => {
+	try {
+		await ack();
+		if (command.user_id == 'UCPRVD7AQ') {
+			speak(command.text);
+		}
+	} catch (e) {
+		console.error(e)
+	}
+})
 
 app.command('/fish-board', async ({ command, ack, say }) => {
 	try {
