@@ -18,6 +18,7 @@ let game = false;
 let players = {};
 let fishValue = 0.01;
 let bonusValue = 0.1
+let permitPrice = 1;
 
 async function speak(text) {
 	try {
@@ -29,6 +30,38 @@ async function speak(text) {
 	} catch (e) {
 		console.error(e);
 	}
+}
+
+async function demandMonee(user) {
+	fetch('https://hn.rishi.cx', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'secret': `${hn}`
+		},
+		body: JSON.stringify({
+			query: `
+				mutation AskForMonee($balance: Float!, $from: String!, $bot: String!){
+					transact(data: {
+						balance: $monee,
+						to: $bot,
+						from: $from
+					}) {
+					id
+					validated
+					balance
+				}
+			}
+			`,
+			variables: {
+				"monee": bonusValue,
+				"bot": "U021CPNLX9P",
+				"from": user
+			},
+		}),
+	})
+		.then((res) => res.json())
+		.then((result) => console.log(result));
 }
 
 async function transact(user, money) {
@@ -78,28 +111,30 @@ async function eph(text, user) {
 
 async function sendResult(query, add) {
 	try {
-		fetch("https://api.airtable.com/v0/appjIEGGFtyw8SHu7/overall/recMMWaz2XxBDz5AS", {
-			headers: {
-				Authorization: tk
-			}
-		}).then((res) => res.json())
-			.then(async (result) => {
-				copy = JSON.parse(JSON.stringify(result));
-				copy.fields[query] += add;
-				let update = [
-					{
-						'id': copy.id,
-						'fields': copy.fields,
-					}
-				]
-				console.log(update);
-				base('overall').update(update, function(err, records) {
-					if (err) {
-						console.error(err);
-						return;
-					}
-				});
-			}).catch((e) => console.error(e))
+		if (Object.keys(players).length <= 1) {
+			fetch("https://api.airtable.com/v0/appjIEGGFtyw8SHu7/overall/recMMWaz2XxBDz5AS", {
+				headers: {
+					Authorization: tk
+				}
+			}).then((res) => res.json())
+				.then(async (result) => {
+					copy = JSON.parse(JSON.stringify(result));
+					copy.fields[query] += add;
+					let update = [
+						{
+							'id': copy.id,
+							'fields': copy.fields,
+						}
+					]
+					console.log(update);
+					base('overall').update(update, function(err, records) {
+						if (err) {
+							console.error(err);
+							return;
+						}
+					});
+				}).catch((e) => console.error(e))
+		}
 	} catch (e) {
 		console.error(e)
 	}
@@ -167,48 +202,42 @@ async function sendScores() {
 	}
 }
 
-async function endGame(quit) {
+async function endGame() {
 	game = false;
-	if (quit) {
-		await speak(`You've decided to end the game a little early before time runs out! Because you've quit early, though, you don't get any money. Thanks for playing!`)
+	score = "";
+	bonus = 0;
+	if (fish >= 20) {
+		score = "A"
+		await sendResult('As', 1, false)
+		bonus = 2 * bonusValue
+	} else if (fish >= 10) {
+		score = "B"
+		await sendResult('Bs', 1, false)
+		bonus = 1 * bonusValue
+	} else if (fish >= 5) {
+		score = "C"
+		await sendResult('Cs', 1, false)
 	} else {
-		score = "";
-		bonus = 0;
+		score = "D"
+		await sendResult('Ds', 1, false)
+	}
+	await speak(`:hourglass:TIME'S UP!:hourglass:\nThe remaining :fish: population is *${fish}*. Based on your fishing responsibility, you get a rating of *${score}*.`)
+	await speak(Object.keys(players).length <= 1 ? "Let me take all that fish-- Wow, that's a _lot_ you've got there! There's only one player, so I won't give you any HN to be fair to others, but I'll still add your fish to the leaderboard!" : `Let me take all that fish-- Wow, that's a _lot_ you've got there! I'll give you ${fishValue}HN per fish for all your hard work!`)
+	let list = "";
+	for (let [key, value] of Object.entries(players)) {
+		list += `<@${key}> - ${value} :fish:\n`
+	}
+	sendScores();
+	await speak(`Here's how many fish each of y'all got: \n${list}`)
+	if (bonus > 0 && Object.keys(players).length > 1) {
+		await speak(`This game, you've also done well with fishing responsibly! I'll give each of you ${bonus}HN as a bonus!`)
+	}
+	for (let [key, value] of Object.entries(players)) {
 		if (Object.keys(players).length > 1) {
-			if (fish >= 20) {
-				score = "A"
-				await sendResult('As', 1, false)
-				bonus = 2 * bonusValue
-			} else if (fish >= 10) {
-				score = "B"
-				await sendResult('Bs', 1, false)
-				bonus = 1 * bonusValue
-			} else if (fish >= 5) {
-				score = "C"
-				await sendResult('Cs', 1, false)
-			} else {
-				score = "D"
-				await sendResult('Ds', 1, false)
-			}
-		}
-		await speak(`:hourglass:TIME'S UP!:hourglass:\nThe remaining :fish: population is *${fish}*. Based on your fishing responsibility, you get a rating of *${score}*.`)
-		await speak(Object.keys(players).length <= 1 ? "Let me take all that fish-- Wow, that's a _lot_ you've got there! There's only one player, so I won't give you any HN to be fair to others, but I'll still add your fish to the leaderboard!" : `Let me take all that fish-- Wow, that's a _lot_ you've got there! I'll give you ${fishValue}HN per fish for all your hard work!`)
-		let list = "";
-		for (let [key, value] of Object.entries(players)) {
-			list += `<@${key}> - ${value} :fish:\n`
-		}
-		sendScores();
-		await speak(`Here's how many fish each of y'all got: \n${list}`)
-		if (bonus > 0 && Object.keys(players).length > 1) {
-			await speak(`This game, you've also done well with fishing responsibly! I'll give each of you ${bonus}HN as a bonus!`)
-		}
-		for (let [key, value] of Object.entries(players)) {
-			if (Object.keys(players).length > 1) {
-				let money = value * fishValue + bonus
-				money = +money.toFixed(2);
-				await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
-				transact(key, money)
-			}
+			let money = value * fishValue + bonus
+			money = +money.toFixed(2);
+			await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
+			// transact(key, money)
 		}
 	}
 	fish = 0;
@@ -225,7 +254,7 @@ async function runGame() {
 			await speak(`:two:The fish population has doubled! Now there are *${fish}* :fish: in the lake!`)
 		}
 		if (time % 120000 == 0 && fish > 0) {
-			endGame(false);
+			endGame();
 		}
 		var diff = (new Date().getTime() - start) - time;
 		if (game) {
@@ -234,24 +263,6 @@ async function runGame() {
 	}
 	setTimeout(instance, 100);
 }
-
-app.command('/go-fishing', async ({ command, ack, say }) => {
-	// Acknowledge command request
-	try {
-		await ack();
-		if (game) {
-			await say("There's currently a game going on right now! Type */fish* to join in")
-		} else {
-			fish = 20;
-			game = true;
-			players = {}
-			await say(`Howdy, y'all! Let's go fishing! :fishing_pole_and_fish: Right now, there are *${fish}* :fish: in Hack Lake! Type */fish* to fish`);
-			runGame();
-		}
-	} catch (e) {
-		console.error(e)
-	}
-});
 
 app.command('/fish-board', async ({ command, ack, say }) => {
 	try {
@@ -278,56 +289,46 @@ app.command('/fish-board', async ({ command, ack, say }) => {
 app.command('/fish', async ({ command, ack, say }) => {
 	try {
 		await ack();
-		if (game) {
-			let user = command.user_id;
-			let number = 1;
-			console.log(command.text);
-			if (isNaN(command.text) || command.text == "" || command.text <= 0 || !isFinite(command.text)) {
-				if (isNaN(command.text) && command.text != "") {
-					await eph(`:warning:Uh oh! You inputted a non-number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}!`, user)
-				} else if (command.text <= 0 || !isFinite(command.text)) {
-					await eph(`:warning:Uh oh! You inputted an invalid number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}`, user)
-				}
-				number = 1;
-			} else {
-				number = parseInt(command.text);
-				number = fish < number ? fish : number;
-				if (fish < number) {
-					await eph(`:warning:Woah! You're hauling way more than the number of fish in the commons! Let's just haul the remaining fish.`, user)
-				}
-			}
-			if (number > fish / 2 && number > 5) {
-				await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
-				number = Math.floor(fish / 2);
-			}
-			if (!players[user]) {
-				players[user] = 0;
-			}
-			players[user] += number;
-			fish -= number;
-			await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now *${fish}* fish remaining!`)
-			if (fish <= 0) {
-				game = false;
-				fish = 0;
-				players = {};
-				await say(`:skull:GAME OVER:skull:\nOh no!! Y'all've ran out of fish! I'm sorry, but you've gained no profits today :cry:\nNevertheless, thanks for playing!`)
-				await sendResult('losses', 1, false)
-			}
-		} else {
-			await say("You need to start a game before you can fish! To do that, send */go-fishing*")
+		if (!game) {
+			fish = 20;
+			game = true;
+			players = {}
+			await say(`Howdy, y'all! Let's go fishing! :fishing_pole_and_fish: Right now, there are *${fish}* :fish: in Hack Lake! Type */fish* to fish`);
+			runGame();
 		}
-	} catch (e) {
-		console.error(e)
-	}
-});
-
-app.command('/end-fishing', async ({ command, ack, say }) => {
-	try {
-		await ack();
-		if (game) {
-			endGame(true);
+		let user = command.user_id;
+		let number = 1;
+		if (isNaN(command.text) || command.text <= 0) {
+			if (isNaN(command.text) && !/^\s*$/.test(command.text)) {
+				await eph(`:warning:Uh oh! You inputted a non-number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}!`, user)
+			} else if (!/^\s*$/.test(command.text) && !isNaN(command.text) && (command.text <= 0 || !isFinite(command.text))) {
+				console.log(isNaN(command.text))
+				await eph(`:warning:Uh oh! You inputted an invalid number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}`, user)
+			}
+			number = 1
 		} else {
-			say("There isn't a game going on right now! Send */go-fishing* in the chat to start")
+			number = parseInt(command.text);
+			number = fish < number ? fish : number;
+			if (fish < number && fish <= 5) {
+				await eph(`:warning:Woah! You're hauling way more than the number of fish in the commons! Let's just haul the remaining fish.`, user)
+			}
+		}
+		if (number > fish / 2 && number > 5) {
+			await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
+			number = Math.floor(fish / 2);
+		}
+		if (!players[user]) {
+			players[user] = 0;
+		}
+		players[user] += number;
+		fish -= number;
+		await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now *${fish}* fish remaining!`)
+		if (fish <= 0) {
+			game = false;
+			fish = 0;
+			players = {};
+			await say(`:skull:GAME OVER:skull:\nOh no!! Y'all've ran out of fish! I'm sorry, but you've gained no profits today :cry:\nNevertheless, thanks for playing!`)
+			await sendResult('losses', 1, false)
 		}
 	} catch (e) {
 		console.error(e)
@@ -337,7 +338,7 @@ app.command('/end-fishing', async ({ command, ack, say }) => {
 app.command('/fish-help', async ({ command, ack, say }) => {
 	try {
 		await ack();
-		say(":wave::skin-tone-4:Howdy! Welcome to the Hack Lake, a place run by me, your local fisherman! ~a.k.a. the primordial but retired Aztec god of fishing, Opochtli, but if you ask about that, I will smite you.~\nYour main goals in this game are simple:\n1. Fish. :fishing_pole_and_fish: :tropical_fish:\n2. PROFIT. :money_mouth_face: :hn:\nBut there's a catch-- no, not the I-got-an-Alaskan-crab type of catch-- *Hack Lake can run out of fish!* :chart_with_downwards_trend: And if you overfish, you lose all the possible profit you'd get. If the number of fish in the lake reaches 0, then you lose the game and get no money! :white_frowning_face: You have :two: minutes to fish, and the fish population doubles every :three::zero: seconds. Can you work with others to get the most profit while responsibly maintaining the :fish: population?\nThis is a test of your character, of your greed, of your willingness to cooperate! Are you ready to prove yourself worthy? Type */go-fishing* to start a game, and type */fish* to make a catch. If you ever want to end a game early, type /end-fishing.")
+		say(":wave::skin-tone-4:Howdy! Welcome to the Hack Lake, a place run by me, your local fisherman! ~a.k.a. the primordial but retired Aztec god of fishing, Opochtli, but if you ask about that, I will smite you.~\nYour main goals in this game are simple:\n1. Fish. :fishing_pole_and_fish: :tropical_fish:\n2. PROFIT. :money_mouth_face: :hn:\nBut there's a catch-- no, not the I-got-an-Alaskan-crab type of catch-- *Hack Lake can run out of fish!* :chart_with_downwards_trend: And if you overfish, you lose all the possible profit you'd get. If the number of fish in the lake reaches 0, then you lose the game and get no money! :white_frowning_face: You have :two: minutes to fish, and the fish population doubles every :three::zero: seconds. Can you work with others to get the most profit while responsibly maintaining the :fish: population?\nThis is a test of your character, of your greed, of your willingness to cooperate! Are you ready to prove yourself worthy? Type */fish* or */fish [number]* to start a game and make a catch.")
 	} catch (e) {
 		console.error(e)
 	}
