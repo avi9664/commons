@@ -33,18 +33,52 @@ async function speak(text) {
 	}
 }
 
-async function demandMonee(user) {
-	fetch('https://hn.rishi.cx', {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			'secret': `${hn}`
-		},
-		body: JSON.stringify({
-			query: `
+async function getTxn(id) {
+	try {
+		const getData = fetch('https://hn.rishi.cx', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'secret': `${hn}`
+			},
+			body: JSON.stringify({
+				query: `
+				query GetTransaction($id: String!) {
+					transaction(id: $id) {
+						balance
+						validated
+						from {
+							id
+						}
+					}
+				}
+			`,
+				variables: {
+					"id": id.toString(),
+				},
+			}),
+		}).then((res) => res.json())
+			.then((result) => { return result.data.transaction.validated });
+		let paid = await getData;
+		return paid;
+	} catch (e) {
+		console.error(e)
+	}
+}
+
+async function invoice(user, id) {
+	try {
+		const createTxn = fetch('https://hn.rishi.cx', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'secret': `${hn}`
+			},
+			body: JSON.stringify({
+				query: `
 				mutation AskForMonee($balance: Float!, $from: String!, $bot: String!){
 					transact(data: {
-						balance: $monee,
+						balance: $balance,
 						to: $bot,
 						from: $from
 					}) {
@@ -54,17 +88,31 @@ async function demandMonee(user) {
 				}
 			}
 			`,
-			variables: {
-				"monee": bonusValue,
-				"bot": "U021CPNLX9P",
-				"from": user
-			},
-		}),
-	})
-		.then((res) => res.json())
-		.then((result) => console.log(result));
+				variables: {
+					"balance": permitPrice,
+					"bot": "U021CPNLX9P",
+					"from": user
+				},
+			}),
+		})
+			.then((res) => res.json())
+			.then((result) => { return result });
+		let result = await createTxn;
+		let txn = result.data.transact;
+		console.log(result);
+		let update = [{
+			"id": id,
+			fields: {
+				last_txn: parseInt(txn.id),
+				valid_permit: false,
+			}
+		}]
+		updateBase('users', update)
+		return txn;
+	} catch (e) {
+		console.error(e)
+	}
 }
-
 
 
 async function transact(user, money) {
@@ -152,12 +200,91 @@ async function updateBase(baseName, update) {
 
 async function createEntry(baseName, entry) {
 	try {
-		base(baseName).create(entry, function(err, records) {
-			if (err) {
-				console.error(err);
-				return;
+		const create = fetch(`https://api.airtable.com/v0/appjIEGGFtyw8SHu7/${baseName}`, {
+			body: JSON.stringify(entry),
+			method: 'POST',
+			headers: {
+				Authorization: tk,
+				"Content-type": "application/json"
 			}
-		});
+		}).then((res) => res.json())
+			.then((result) => { return result; });
+		result = await create;
+		return result;
+	} catch (e) {
+		console.error(e)
+	}
+}
+
+async function checkTransaction(user) {
+	try {
+		const doCheck = fetch(`https://api.airtable.com/v0/appjIEGGFtyw8SHu7/users?maxRecords=3&view=Grid%20view&filterByFormula=user%3D%22${user}%22`, {
+			headers: {
+				Authorization: tk
+			}
+		})
+			.then((res) => res.json())
+			.then(async (result) => {
+				let exists = result.records.length == 0 ? false : true;
+				if (exists) {
+					let records = result.records[0].fields;
+					if (!records.valid_permit) {
+						if (records.last_txn == 0) {
+							let txn = await invoice(user, result.records[0].id);
+							eph(`Hey <@${user}>, before you can fish, you need to get a permit first! I've sent you an invoice for ${permitPrice}HN to help you get started! Just run \`/pay ${txn.id}\` to get your permit and then run /fish again to get started!`, user)
+							return false;
+						} else {
+							let paid = await getTxn(records.last_txn);
+							console.log(paid);
+							if (paid == true) {
+								let now = new Date();
+								let update = [{
+									id: result.records[0].id,
+									fields: {
+										valid_permit: true,
+										exp_date: now.setDate(now.getDate() + 7),
+									}
+								}]
+								updateBase('users', update)
+								eph(`Hey <@${user}>, thanks for paying for the fishing permit! Enjoy your :fish: :sparkling_heart:`, user)
+								return true;
+							} else if (paid == false) {
+								eph(`Hey <@${user}>, if you can afford the permit, please send \`/pay ${records.last_txn}\` to pay for the invoice I've sent you. After you do that, you can type \`/fish\` again. Thanks!`, user)
+								return false;
+							}
+						}
+					} else if (records.valid_permit) {
+						now = new Date();
+						if (new Date(records.exp_date) < now) {
+							console.log(records.exp_date, now);
+							let txn = await invoice(user, result.records[0].id);
+							console.log(txn);
+							eph(`Hey <@${user}>, your fishing permit has expired, so you need to get a new permit first! I've sent you another invoice for ${permitPrice}HN to help you get started! Just run \`/pay ${txn.id}\` to get your permit and then run /fish again to get started!`, user)
+							return false;
+						} else {
+							return true;
+						}
+					}
+				} else {
+					let entry = {
+						records: [{
+							fields: {
+								user: user,
+								wins: 0,
+								fish: 0,
+								last_txn: 0,
+							}
+						}]
+					};
+					let newEntry = await createEntry('users', entry)
+					console.log(newEntry.records[0].id);
+					let txn = await invoice(user, newEntry.records[0].id);
+					eph(`Hey <@${user}>, before you can fish, you need to get a permit first! I've sent you an invoice for ${permitPrice}HN to help you get started! Just run \`/pay ${txn.id}\` to get your permit and then run /fish again to get started!`, user)
+					return false;
+				}
+			})
+		let boughtPermit = await doCheck;
+		return doCheck;
 	} catch (e) {
 		console.error(e)
 	}
@@ -195,7 +322,7 @@ async function sendScores() {
 						};
 						createEntry('users', update)
 					} else {
-						update = [{
+						let update = [{
 							id: copy.records[index].id,
 							fields: {
 								user: key,
@@ -247,8 +374,8 @@ async function endGame() {
 		if (Object.keys(players).length > 1) {
 			let money = value * fishValue + bonus
 			money = +money.toFixed(2);
-			await eph(`:moneybag:~Keep your eyes out for a transaction of ${money}HN into your account!~ money powers down for now, sorry :(`, key)
-			// transact(key, money)
+			await eph(`:moneybag:Keep your eyes out for a transaction of ${money}HN into your account!`, key)
+			transact(key, money)
 		}
 	}
 	fish = 0;
@@ -286,7 +413,7 @@ app.event('app_mention', async (body) => {
 	}
 })
 
-app.command('/t', async({command, ack, say}) => {
+app.command('/t', async ({ command, ack, say }) => {
 	try {
 		await ack();
 		if (command.user_id == 'UCPRVD7AQ') {
@@ -322,46 +449,50 @@ app.command('/fish-board', async ({ command, ack, say }) => {
 app.command('/fish', async ({ command, ack, say }) => {
 	try {
 		await ack();
-		if (!game) {
-			fish = 20;
-			game = true;
-			players = {}
-			await say(`Howdy, y'all! Let's go fishing! :fishing_pole_and_fish: Right now, there are *${fish}* :fish: in Hack Lake! Type */fish* to fish`);
-			runGame();
-		}
 		let user = command.user_id;
-		let number = 1;
-		if (isNaN(command.text) || command.text <= 0) {
-			if (isNaN(command.text) && !/^\s*$/.test(command.text)) {
-				await eph(`:warning:Uh oh! You inputted a non-number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}!`, user)
-			} else if (!/^\s*$/.test(command.text) && !isNaN(command.text) && (command.text <= 0 || !isFinite(command.text))) {
-				console.log(isNaN(command.text))
-				await eph(`:warning:Uh oh! You inputted an invalid number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}`, user)
+		let boughtPermit = await checkTransaction(user);
+		console.log(boughtPermit);
+		if (boughtPermit == true) {
+			if (!game) {
+				fish = 20;
+				game = true;
+				players = {}
+				await say(`Howdy, y'all! Let's go fishing! :fishing_pole_and_fish: Right now, there are *${fish}* :fish: in Hack Lake! Type */fish* to fish`);
+				runGame();
 			}
-			number = 1
-		} else {
-			number = parseInt(command.text);
-			number = fish < number ? fish : number;
-			if (fish < number && fish <= 5) {
-				await eph(`:warning:Woah! You're hauling way more than the number of fish in the commons! Let's just haul the remaining fish.`, user)
+			let number = 1;
+			if (isNaN(command.text) || command.text <= 0) {
+				if (isNaN(command.text) && !/^\s*$/.test(command.text)) {
+					await eph(`:warning:Uh oh! You inputted a non-number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}!`, user)
+				} else if (!/^\s*$/.test(command.text) && !isNaN(command.text) && (command.text <= 0 || !isFinite(command.text))) {
+					console.log(isNaN(command.text))
+					await eph(`:warning:Uh oh! You inputted an invalid number! I'll change that to 1 fish for now, but next time please input a number between 1 and ${Math.floor(fish / 2)}`, user)
+				}
+				number = 1
+			} else {
+				number = parseInt(command.text);
+				number = fish < number ? fish : number;
+				if (fish < number && fish <= 5) {
+					await eph(`:warning:Woah! You're hauling way more than the number of fish in the commons! Let's just haul the remaining fish.`, user)
+				}
 			}
-		}
-		if (number > fish / 2 && number > 5) {
-			await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
-			number = Math.floor(fish / 2);
-		}
-		if (!players[user]) {
-			players[user] = 0;
-		}
-		players[user] += number;
-		fish -= number;
-		await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now *${fish}* fish remaining!`)
-		if (fish <= 0) {
-			game = false;
-			fish = 0;
-			players = {};
-			await say(`:skull:GAME OVER:skull:\nOh no!! Y'all've ran out of fish! I'm sorry, but you've gained no profits today :cry:\nNevertheless, thanks for playing!`)
-			await sendResult('losses', 1, false)
+			if (number > fish / 2 && number > 5) {
+				await eph(`:warning:Woah! You're hauling over half of the fish in the lake! For the sake of being fair to the others, let's keep that at fifty percent.`, user)
+				number = Math.floor(fish / 2);
+			}
+			if (!players[user]) {
+				players[user] = 0;
+			}
+			players[user] += number;
+			fish -= number;
+			await say(`:fishing_pole_and_fish: <@${user}> just fished! They now have *${players[user]}* fish.\nThere are now *${fish}* fish remaining!`)
+			if (fish <= 0) {
+				game = false;
+				fish = 0;
+				players = {};
+				await say(`:skull:GAME OVER:skull:\nOh no!! Y'all've ran out of fish! I'm sorry, but you've gained no profits today :cry:\nNevertheless, thanks for playing!`)
+				await sendResult('losses', 1, false)
+			}
 		}
 	} catch (e) {
 		console.error(e)
